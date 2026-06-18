@@ -159,7 +159,7 @@ jobs:
 
           gh release delete "${TAG}" --yes 2>/dev/null || true
           gh release create "${TAG}" \
-            --title "${TAG}" \
+            --title "HID Stabilizer Manager ${TAG}" \
             --notes "Release ${TAG} for ESP32-S3 USB HID Stabilizer"
 
       - name: 上传固件到 Release
@@ -172,29 +172,56 @@ jobs:
 
           BIN="$(find artifacts -name 'esp32-usb-hid-stabilizer.bin' -type f | head -1)"
           if [ -n "${BIN}" ]; then
-            echo "Uploading firmware: ${BIN}"
-            gh release upload "${TAG}" "${BIN}" --clobber
+            DIR="$(dirname "${BIN}")"
+            RENAMED="${DIR}/esp32-usb-hid-stabilizer-${TAG}.bin"
+            mv "${BIN}" "${RENAMED}"
+            echo "Uploading firmware: ${RENAMED}"
+            gh release upload "${TAG}" "${RENAMED}" --clobber
           else
             echo "No firmware binary found, skipping..."
           fi
 
-      - name: 上传桌面客户端到 Release
+      - name: 重命名并上传桌面客户端到 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
           TAG="${{ github.event.inputs.tag_name }}"
+          BASE="HID-Stabilizer-Manager-${TAG}"
 
-          find artifacts -type f \( \
-            -name '*.dmg' -o \
-            -name '*.exe' -o \
-            -name '*.msi' -o \
-            -name '*.deb' -o \
-            -name '*.AppImage' \
-          \) | while read -r f; do
-            echo "Uploading: ${f}"
-            gh release upload "${TAG}" "${f}" --clobber
+          map_platform() {
+            case "$1" in
+              desktop-macOS-aarch64) echo "macOS-aarch64" ;;
+              desktop-macOS-x64)     echo "macOS-x86_64" ;;
+              desktop-Windows-x64)   echo "Windows-x86_64" ;;
+              desktop-Linux-x64)     echo "Linux-x86_64" ;;
+              *)                     echo "$1" ;;
+            esac
+          }
+
+          find artifacts -type d -name 'desktop-*' | while read -r dir; do
+            NAME="$(basename "${dir}")"
+            PLATFORM="$(map_platform "${NAME}")"
+
+            find "${dir}" -type f \( \
+              -name '*.dmg' -o \
+              -name '*.exe' -o \
+              -name '*.msi' -o \
+              -name '*.deb' -o \
+              -name '*.AppImage' \
+            \) | while read -r f; do
+              EXT="${f##*.}"
+              # Handle .tar.gz / .tar.xz etc
+              case "${f}" in
+                *.tar.gz) EXT="tar.gz" ;;
+                *.tar.xz) EXT="tar.xz" ;;
+              esac
+              NEW_NAME="${BASE}-${PLATFORM}.${EXT}"
+              mv "${f}" "$(dirname "${f}")/${NEW_NAME}"
+              echo "Uploading: ${NEW_NAME}"
+              gh release upload "${TAG}" "$(dirname "${f}")/${NEW_NAME}" --clobber
+            done
           done
 
       - name: 输出下载地址
