@@ -135,6 +135,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 拉取仓库元数据（供 gh CLI 创建 Release）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: 下载所有产物
         uses: actions/download-artifact@v4
         with:
